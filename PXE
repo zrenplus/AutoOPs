@@ -3,3 +3,205 @@
 2.centos7中system-config-kickstart图形界面默认不能显示可选软件包选项，需要yum源repo文件中有[development] 为名的可用源
 3.PXE Host，事先已经挂载了CentOS-7-x86_64-DVD-1708(7.4).iso
 3.测试的客户端，为VMware虚拟机，网络端口事先已经配置port access vlan1170
+
+[root@pxe yum.repos.d]# pwd
+/etc/yum.repos.d
+[root@pxe yum.repos.d]# cat Centos-7.repo
+[development]
+name=CentOS-$releasever - Base - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/$releasever/os/$basearch/
+        http://mirrors.aliyuncs.com/centos/$releasever/os/$basearch/
+        http://mirrors.cloud.aliyuncs.com/centos/$releasever/os/$basearch/
+gpgcheck=1
+gpgkey=http://mirrors.aliyun.com/centos/RPM-GPG-KEY-CentOS-7
+[root@pxe yum.repos.d]#
+iptables -vnL
+getenforce
+yum install tftp-server dhcp syslinux system-config-kickstart
+yum install tree
+systemctl enable httpd
+systemctl start httpd
+mkdir /var/www/html/centos/7/os/x86_64/
+mkdir -p /var/www/html/centos/7/os/x86_64/
+mount /dev/sr0 /var/www/html/centos/7/os/x86_64/
+mkdir /var/www/html/ks
+mkdir /mydata/pxe
+！！！使用system-config-kickstart在图形界面下，生成ks.cfg，保存在/mydata/pxe文件夹下
+cd /mydata/pxe
+cp /mydata/pxe/ks.cfg /var/www/html/ks/ks7.cfg
+[root@pxe ks]# cat ks7.cfg
+#platform=x86, AMD64, or Intel EM64T
+#version=DEVEL
+# Install OS instead of upgrade
+install
+# Keyboard layouts
+keyboard 'us'
+# Root password
+rootpw --iscrypted $1$1/s3b3Ur$uQf9L0nlXtXbU9iYuP4dM/
+# Use network installation
+url --url="http://10.17.170.202/centos/7/os/x86_64"
+# System language
+lang en_US
+# System authorization information
+auth  --useshadow  --passalgo=sha512
+# Use graphical install
+graphical
+firstboot --disable
+# SELinux configuration
+selinux --disabled
+
+# Firewall configuration
+firewall --disabled
+# Reboot after installation
+reboot
+#Network information
+#network --bootproto=static --device=ens224 --ip=10.17.170.203 --netmask=255.255.255.0
+#network --bootproto=static --device=ens256 --gateway=172.17.247.1 --ip=172.17.247.2 --netmask=255.255.255.0
+network --bootproto=dhcp --device=ens192 --onboot=yes --noipv6 --hostname=pxevm
+# System timezone
+timezone Asia/Shanghai
+# System bootloader configuration
+bootloader --location=mbr
+#Clear the Master Boot Record
+zerombr
+# Partition clearing information
+clearpart --all --initlabel
+# Disk partitioning information
+part /boot --fstype="xfs" --size=500
+part swap --fstype="swap" --size=8192
+part / --fstype="xfs" --size=102400
+
+%packages
+@additional-devel
+@compat-libraries
+@desktop-debugging
+@development
+@fonts
+@gnome-desktop
+@input-methods
+@internet-browser
+@java-platform
+@kde-desktop
+@legacy-x
+@platform-devel
+@remote-desktop-clients
+@system-admin-tools
+@x11
+vinagre
+xterm
+-cjkuni-uming-fonts
+-dejavu-sans-fonts
+-dejavu-sans-mono-fonts
+-dejavu-serif-fonts
+-firefox
+-gnu-free-mono-fonts
+-gnu-free-sans-fonts
+-gnu-free-serif-fonts
+-google-crosextra-caladea-fonts
+-google-crosextra-carlito-fonts
+-google-noto-emoji-fonts
+-icedtea-web
+-jomolhari-fonts
+-khmeros-base-fonts
+-liberation-mono-fonts
+-liberation-sans-fonts
+-liberation-serif-fonts
+-lklug-fonts
+-lohit-assamese-fonts
+-lohit-bengali-fonts
+-lohit-devanagari-fonts
+-lohit-gujarati-fonts
+-lohit-kannada-fonts
+-lohit-malayalam-fonts
+-lohit-marathi-fonts
+-lohit-nepali-fonts
+-lohit-oriya-fonts
+-lohit-punjabi-fonts
+-lohit-tamil-fonts
+-lohit-telugu-fonts
+-madan-fonts
+-nhn-nanum-gothic-fonts
+-open-sans-fonts
+-overpass-fonts
+-paktype-naskh-basic-fonts
+-paratype-pt-sans-fonts
+-sil-abyssinica-fonts
+-sil-nuosu-fonts
+-sil-padauk-fonts
+-smc-meera-fonts
+-stix-fonts
+-thai-scalable-waree-fonts
+-ucs-miscfixed-fonts
+-vlgothic-fonts
+-wqy-microhei-fonts
+-wqy-zenhei-fonts
+%end
+%post
+systemctl disable initial-setup.service
+%end
+#########################################
+systemctl enable tftp.socket
+systemctl start tftp.socket
+systemctl enable tftp
+systemctl start tftp
+#########################################
+cp /etc/dhcp/dhcpd.conf /mydata/pxe/dhcpd.conf.old
+[root@pxe ks]#  vim /etc/dhcp/dhcpd.conf
+#
+# DHCP Server Configuration file.
+#   see /usr/share/doc/dhcp*/dhcpd.conf.example
+#   see dhcpd.conf(5) man page
+#
+option domain-name "atlbattery.com";
+option domain-name-servers 172.17.10.40,172.17.10.41;
+default-lease-time 259200;
+max-lease-time 518400;
+option routers 10.17.170.1;
+subnet 10.17.170.0 netmask 255.255.255.0 {
+ range 10.17.170.3 10.17.170.10;
+ filename "pxelinux.0";
+ next-server 10.17.170.202;
+}
+
+[root@pxe ks]# systemctl start dhcpd
+[root@pxe ks]# systemctl enable dhcpd
+#########################################
+mkdir /var/lib/tftpboot/pxelinux.cfg
+cp /var/www/html/centos/7/os/x86_64/isolinux/vmlinuz /var/lib/tftpboot/
+cp /var/www/html/centos/7/os/x86_64/isolinux/initrd.img /var/lib/tftpboot/
+cp /var/www/html/centos/7/os/x86_64/isolinux/isolinux.cfg /var/lib/tftpboot/pxelinux.cfg/default
+cd /var/lib/tftpboot/
+ls
+cd pxelinux.cfg
+tree
+cp /usr/share/syslinux/pxelinux.0 /var/lib/tftpboot/
+cp /usr/share/syslinux/menu.c32 /var/lib/tftpboot/
+tree
+########################################
+设置开机引导界面及文件
+########################################
+cp /var/lib/tftpboot/pxelinux.cfg/default /mydata/pxe/default.old
+[root@pxe pxelinux.cfg]# vim /var/lib/tftpboot/pxelinux.cfg/default                  
+default menu.c32
+timeout 300
+
+label linux
+  menu label ^Kickstart Install CentOS 7
+  kernel vmlinuz
+  append initrd=initrd.img ks=http://10.17.170.202/ks/ks7.cfg
+label manual
+  menu label ^Manual Install CentOS 7
+  kernel vmlinuz
+  append initrd=initrd.img inst.repo=http://10.17.170.202/centos/7/os/x86_64
+label local
+  menu default
+  menu label Boot from ^local drive
+  localboot 0xffff
+[root@pxe pxelinux.cfg]#
+#########################################
+客户端开机界面，
+开机启动项，设置bios从网络引导
+ 
+
+ 
