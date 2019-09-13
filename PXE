@@ -1,0 +1,5 @@
+备注：
+1.PXE Host处于内网，事先已经配置外网代理服务器，配置了公网的yum源；
+2.centos7中system-config-kickstart图形界面默认不能显示可选软件包选项，需要yum源repo文件中有[development] 为名的可用源
+3.PXE Host，事先已经挂载了CentOS-7-x86_64-DVD-1708(7.4).iso
+3.测试的客户端，为VMware虚拟机，网络端口事先已经配置port access vlan1170
